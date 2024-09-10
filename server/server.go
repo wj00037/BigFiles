@@ -6,19 +6,20 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi"
+	"github.com/huaweicloud/huaweicloud-sdk-go-obs/obs"
 	"github.com/metalogical/BigFiles/auth"
 	"github.com/metalogical/BigFiles/batch"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/sirupsen/logrus"
 )
 
-var S3PutLimit int = 5*int(math.Pow10(9)) - 1 // 5GB - 1
+var ObsPutLimit int = 5*int(math.Pow10(9)) - 1 // 5GB - 1
 var oidRegexp = regexp.MustCompile("^[a-f0-9]{64}$")
 
 type Options struct {
@@ -26,6 +27,7 @@ type Options struct {
 	Endpoint     string
 	NoSSL        bool
 	Bucket       string
+	CdnDomain    string
 	S3Accelerate bool
 
 	// minio auth (required)
@@ -42,22 +44,22 @@ type Options struct {
 
 func (o Options) imputeFromEnv() (Options, error) {
 	if o.Endpoint == "" {
-		region := os.Getenv("AWS_REGION")
+		region := os.Getenv("OBS_REGION")
 		if region == "" {
 			return o, errors.New("endpoint required")
 		}
 		o.Endpoint = region
 	}
 	if o.AccessKeyID == "" {
-		o.AccessKeyID = os.Getenv("AWS_ACCESS_KEY_ID")
+		o.AccessKeyID = os.Getenv("OBS_ACCESS_KEY_ID")
 		if o.AccessKeyID == "" {
-			return o, fmt.Errorf("AWS access key ID required for %s", o.Endpoint)
+			return o, fmt.Errorf("OBS access key ID required for %s", o.Endpoint)
 		}
-		o.SecretAccessKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
+		o.SecretAccessKey = os.Getenv("OBS_SECRET_ACCESS_KEY")
 		if o.SecretAccessKey == "" {
-			return o, fmt.Errorf("AWS secret access key required for %s", o.Endpoint)
+			return o, fmt.Errorf("OBS secret access key required for %s", o.Endpoint)
 		}
-		o.SessionToken = os.Getenv("AWS_SESSION_TOKEN")
+		o.SessionToken = os.Getenv("OBS_SESSION_TOKEN")
 	}
 	if o.Bucket == "" {
 		return o, fmt.Errorf("bucket required")
@@ -75,16 +77,9 @@ func New(o Options) (http.Handler, error) {
 		return nil, err
 	}
 
-	// Initialize minio client object.
-	client, err := minio.New(o.Endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(o.AccessKeyID, o.SecretAccessKey, o.SessionToken),
-		Secure: !o.NoSSL,
-	})
+	client, err := obs.New(o.AccessKeyID, o.SecretAccessKey, o.Endpoint, obs.WithSignature(obs.SignatureObs))
 	if err != nil {
-		return nil, err
-	}
-	if o.S3Accelerate {
-		client.SetS3TransferAccelerate("s3-accelerate.amazonaws.com")
+		fmt.Printf("Create obsClient error, errMsg: %s", err.Error())
 	}
 
 	s := &server{
@@ -92,9 +87,9 @@ func New(o Options) (http.Handler, error) {
 		bucket:       o.Bucket,
 		prefix:       o.Prefix,
 		ttl:          o.TTL,
+		cdnDomain:    o.CdnDomain,
 		isAuthorized: o.IsAuthorized,
 	}
-
 	r := chi.NewRouter()
 
 	r.Get("/", s.healthCheck)
@@ -104,10 +99,11 @@ func New(o Options) (http.Handler, error) {
 }
 
 type server struct {
-	client *minio.Client
-	bucket string
-	ttl    time.Duration
-	prefix string
+	ttl       time.Duration
+	client    *obs.ObsClient
+	bucket    string
+	prefix    string
+	cdnDomain string
 
 	isAuthorized func(auth.UserInRepo) error
 }
@@ -180,44 +176,52 @@ func (s *server) handleBatch(w http.ResponseWriter, r *http.Request) {
 
 		switch req.Operation {
 		case "download":
-			if info, err := s.client.StatObject(r.Context(), s.bucket, s.key(in.OID), minio.StatObjectOptions{}); err != nil {
+			getObjectMetadataInput := &obs.GetObjectMetadataInput{
+				Bucket: s.bucket,
+				Key:    s.key(in.OID),
+			}
+			if metadata, err := s.client.GetObjectMetadata(getObjectMetadataInput); err != nil {
 				out.Error = &batch.ObjectError{
 					Code:    404,
 					Message: err.Error(),
 				}
 				continue
-			} else if in.Size != int(info.Size) {
+			} else if in.Size != int(metadata.ContentLength) {
 				out.Error = &batch.ObjectError{
 					Code:    422,
 					Message: "found object with wrong size",
 				}
 			}
-
-			href, err := s.client.PresignedGetObject(r.Context(), s.bucket, s.key(in.OID), s.ttl, nil)
+			getObjectInput := &obs.CreateSignedUrlInput{}
+			getObjectInput.Method = obs.HttpMethodGet
+			getObjectInput.Bucket = s.bucket
+			getObjectInput.Key = s.key(in.OID)
+			getObjectInput.Expires = int(s.ttl / time.Second)
+			getObjectInput.Headers = map[string]string{"Content-Type": "application/octet-stream"}
+			// 生成下载对象的带授权信息的URL
+			getObjectOutput, err := s.client.CreateSignedUrl(getObjectInput)
 			if err != nil {
+				panic(err)
+			}
+			v, err := url.Parse(getObjectOutput.SignedUrl)
+			if err == nil {
+				v.Host = s.cdnDomain
+				v.Scheme = "https"
+			} else {
+				logrus.Infof("%s cannot be parsed", getObjectOutput.SignedUrl)
 				panic(err)
 			}
 
 			out.Actions = &batch.Actions{
 				Download: &batch.Action{
-					HRef:      href.String(),
+					HRef:      v.String(),
+					Header:    getObjectInput.Headers,
 					ExpiresIn: int(s.ttl / time.Second),
 				},
 			}
 
 		case "upload":
-			if info, err := s.client.StatObject(r.Context(), s.bucket, s.key(in.OID), minio.StatObjectOptions{}); err == nil {
-				if in.Size != int(info.Size) {
-					out.Error = &batch.ObjectError{
-						Code:    422,
-						Message: "existing object with wrong size",
-					}
-				}
-				// already exists, omit actions
-				continue
-			}
-
-			if out.Size > S3PutLimit {
+			if out.Size > ObsPutLimit {
 				out.Error = &batch.ObjectError{
 					Code:    422,
 					Message: "cannot upload objects larger than 5GB to S3 via LFS basic transfer adapter",
@@ -225,20 +229,26 @@ func (s *server) handleBatch(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			href, err := s.client.PresignedPutObject(r.Context(), s.bucket, s.key(in.OID), s.ttl)
+			putObjectInput := &obs.CreateSignedUrlInput{}
+			putObjectInput.Method = obs.HttpMethodPut
+			putObjectInput.Bucket = s.bucket
+			putObjectInput.Key = s.key(in.OID)
+			putObjectInput.Expires = int(s.ttl / time.Second)
+			putObjectInput.Headers = map[string]string{"Content-Type": "application/octet-stream"}
+			putObjectOutput, err := s.client.CreateSignedUrl(putObjectInput)
 			if err != nil {
 				panic(err)
 			}
 
 			out.Actions = &batch.Actions{
 				Upload: &batch.Action{
-					HRef:      href.String(),
+					HRef:      putObjectOutput.SignedUrl,
+					Header:    putObjectInput.Headers,
 					ExpiresIn: int(s.ttl / time.Second),
 				},
 			}
 		}
 	}
-
 	must(json.NewEncoder(w).Encode(resp))
 }
 

@@ -11,9 +11,10 @@ type Config struct {
 	LfsBucket          string `json:"LFS_BUCKET"`
 	ClientId           string `json:"CLIENT_ID"`
 	ClientSecret       string `json:"CLIENT_SECRET"`
-	AwsRegion          string `json:"AWS_REGION"`
-	AwsAccessKeyId     string `json:"AWS_ACCESS_KEY_ID"`
-	AwsSecretAccessKey string `json:"AWS_SECRET_ACCESS_KEY"`
+	CdnDomain          string `json:"CDN_DOMAIN"`
+	ObsRegion          string `json:"OBS_REGION"`
+	ObsAccessKeyId     string `json:"OBS_ACCESS_KEY_ID"`
+	ObsSecretAccessKey string `json:"OBS_SECRET_ACCESS_KEY"`
 }
 
 // LoadConfig loads the configuration file from the specified path and deletes the file if needed

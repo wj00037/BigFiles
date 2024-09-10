@@ -94,22 +94,15 @@ func main() {
 		return
 	}
 
-	bucket := cfg.LfsBucket
-	if bucket == "" {
-		bucket = os.Getenv("LFS_BUCKET")
-		if bucket == "" {
-			logrus.Errorf("LFS_BUCKET must be set")
-		}
-	}
-
 	s, err := server.New(server.Options{
 		Prefix:          cfg.Prefix,
-		Bucket:          bucket,
-		Endpoint:        cfg.AwsRegion,
-		AccessKeyID:     cfg.AwsAccessKeyId,
+		Bucket:          cfg.LfsBucket,
+		Endpoint:        cfg.ObsRegion,
+		CdnDomain:       cfg.CdnDomain,
+		AccessKeyID:     cfg.ObsAccessKeyId,
 		S3Accelerate:    true,
 		IsAuthorized:    auth.GiteeAuth(),
-		SecretAccessKey: cfg.AwsSecretAccessKey,
+		SecretAccessKey: cfg.ObsSecretAccessKey,
 	})
 	srv := &http.Server{
 		Addr:         "0.0.0.0:5000",
