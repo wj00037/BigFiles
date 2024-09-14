@@ -23,6 +23,11 @@ jobs:
     runs-on: [self-hosted, Linux]
     steps:
       - uses: actions/checkout@v4
+      - name: config github
+        env:
+          TOKEN: ${{ secrets.ACCESS_TOKEN }}
+          USER: ${{ secrets.USER_NAME }}
+        run: echo "machine github.com login $USER password $TOKEN" > ~/.netrc
       - name: golangci-lint
         uses: golangci/golangci-lint-action@master
         with:
@@ -38,7 +43,11 @@ jobs:
 
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
+        env:
+          GITHUB_AUTHENTICATION_TOKEN: ${{ secrets.ACCESS_TOKEN }}
         with:
           args: -exclude-dir api -exclude-dir tests ./...
       - name: Unit tests
         run: go test -race -count=1 -v ./...
+      - name: cleanup
+        run: rm -f ~/.netrc
