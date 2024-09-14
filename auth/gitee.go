@@ -79,7 +79,7 @@ func getToken(username, password string) (string, error) {
 	return accessToken.Token, nil
 }
 
-// verifyUser verifies user permission in repo by access_token
+// verifyUser verifies user permission in repo by access_token 1231
 func verifyUser(userInRepo UserInRepo) error {
 	path := fmt.Sprintf(
 		"https://gitee.com/api/v5/repos/%s/%s/collaborators/%s/permission?access_token=%s",
