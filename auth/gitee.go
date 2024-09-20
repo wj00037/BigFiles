@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -17,9 +18,21 @@ var (
 	client_secret string
 )
 
+var uploadPermissions = []string{"admin", "developer"}
+var downloadPermissions = []string{"admin", "developer", "read"}
+
 type giteeUser struct {
-	Login string `json:"login"`
-	// Permission string `json:"permission"`
+	Login      string `json:"login"`
+	Permission string `json:"permission"`
+}
+
+type UserInRepo struct {
+	Repo      string
+	Owner     string
+	Token     string
+	Username  string
+	Password  string
+	Operation string
 }
 
 type AccessToken struct {
@@ -45,21 +58,23 @@ func Init(cfg *config.Config) error {
 	return nil
 }
 
-func GiteeAuth() func(string, string) error {
-	return func(username, password string) error {
-		token, err := getToken(username, password)
+func GiteeAuth() func(UserInRepo) error {
+	return func(userInRepo UserInRepo) error {
+		token, err := getToken(userInRepo.Username, userInRepo.Password)
 		if err != nil {
-			return err
+			userInRepo.Token = userInRepo.Password
+		} else {
+			userInRepo.Token = token
 		}
 
-		return verifyUser(username, token)
+		return verifyUser(userInRepo)
 	}
 }
 
 // getToken gets access_token by username and password
 func getToken(username, password string) (string, error) {
 	form := url.Values{}
-	form.Add("scope", "user_info")
+	form.Add("scope", "user_info projects")
 	form.Add("grant_type", "password")
 	form.Add("username", username)
 	form.Add("password", password)
@@ -88,9 +103,15 @@ func getToken(username, password string) (string, error) {
 	return accessToken.Token, nil
 }
 
-// verifyUser verifies user info by access_token
-func verifyUser(username, token string) error {
-	path := "https://gitee.com/api/v5/user?access_token=" + token
+// verifyUser verifies user permission in repo by access_token
+func verifyUser(userInRepo UserInRepo) error {
+	path := fmt.Sprintf(
+		"https://gitee.com/api/v5/repos/%s/%s/collaborators/%s/permission?access_token=%s",
+		userInRepo.Owner,
+		userInRepo.Repo,
+		userInRepo.Username,
+		userInRepo.Token,
+	)
 	req, err := http.NewRequest("GET", path, nil)
 	if err != nil {
 		panic(err)
@@ -114,9 +135,25 @@ func verifyUser(username, token string) error {
 	if err != nil {
 		panic(err)
 	}
-	if giteeUser.Login == username {
-		return nil
-	} else {
+
+	if giteeUser.Login != userInRepo.Username {
 		return errors.New("username does not match")
+	}
+	if userInRepo.Operation == "upload" {
+		for _, v := range uploadPermissions {
+			if giteeUser.Permission == v {
+				return nil
+			}
+		}
+		return errors.New("user has no permission uploading to the repository")
+	} else if userInRepo.Operation == "download" {
+		for _, v := range downloadPermissions {
+			if giteeUser.Permission == v {
+				return nil
+			}
+		}
+		return errors.New("user has no permission downloading in the repository")
+	} else {
+		return errors.New("unknow operation")
 	}
 }
