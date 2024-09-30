@@ -7,6 +7,13 @@ import (
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/metalogical/BigFiles/config"
+)
+
+var (
+	clientId     string
+	clientSecret string
 )
 
 var (
@@ -40,6 +47,25 @@ type Repo struct {
 
 type AccessToken struct {
 	Token string `json:"access_token"`
+}
+
+func Init(cfg *config.Config) error {
+	clientId = cfg.ClientId
+	if clientId == "" {
+		clientId = os.Getenv("CLIENT_ID")
+		if clientId == "" {
+			return errors.New("client id required")
+		}
+	}
+	clientSecret = cfg.ClientSecret
+	if clientSecret == "" {
+		clientSecret = os.Getenv("CLIENT_SECRET")
+		if clientSecret == "" {
+			return errors.New("client secret required")
+		}
+	}
+
+	return nil
 }
 
 func GiteeAuth() func(UserInRepo) error {
@@ -96,15 +122,13 @@ func CheckRepoOwner(userInRepo UserInRepo) error {
 
 // getToken gets access_token by username and password
 func getToken(username, password string) (string, error) {
-	clientId := os.Getenv("CLIENT_ID")
-	clientSecret := os.Getenv("CLIENT_SECRET")
 	form := url.Values{}
 	form.Add("scope", "user_info projects")
 	form.Add("grant_type", "password")
 	form.Add("username", username)
 	form.Add("password", password)
-	form.Add("client_id", clientId)
-	form.Add("client_secret", clientSecret)
+	form.Add("clientId", clientId)
+	form.Add("clientSecret", clientSecret)
 
 	path := "https://gitee.com/oauth/token"
 	headers := http.Header{"Content-Type": []string{"application/x-www-form-urlencoded"}}
