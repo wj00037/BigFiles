@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi"
@@ -139,18 +140,22 @@ func (s *server) handleBatch(w http.ResponseWriter, r *http.Request) {
 			userInRepo.Username = username
 			userInRepo.Password = password
 			err = s.isAuthorized(userInRepo)
-			// TODO: 若仓库无lfs服务权限，不能返回401，否则会继续提示输入用户名密码。返回403
-			if err != nil {
-				err = fmt.Errorf("unauthorized: %w", err)
-			}
 		} else {
-			err = errors.New("Unauthorized")
+			err = errors.New("unauthorized: cannot get password")
 		}
 		if err != nil {
+			v := err.Error()
+			switch {
+			case strings.HasPrefix(v, "unauthorized") || strings.HasPrefix(v, "not_found"):
+				w.WriteHeader(401)
+			case strings.HasPrefix(v, "forbidden"):
+				w.WriteHeader(403)
+			default:
+				w.WriteHeader(500)
+			}
 			w.Header().Set("LFS-Authenticate", `Basic realm="Git LFS"`)
-			w.WriteHeader(401)
 			must(json.NewEncoder(w).Encode(batch.ErrorResponse{
-				Message: err.Error(),
+				Message: v,
 			}))
 			return
 		}
