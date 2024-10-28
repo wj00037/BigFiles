@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Client struct {
@@ -23,6 +26,13 @@ func getParsedResponse(method, path string, header http.Header, body io.Reader, 
 		panic(err)
 	}
 	defer response.Body.Close()
+
+	if splitPath := strings.Split(path, "?"); len(splitPath) != 1 {
+		logrus.Infof("query %s with token | %d", splitPath[0], response.StatusCode)
+	} else {
+		logrus.Infof("query %s without token | %d", splitPath[0], response.StatusCode)
+	}
+
 	if response.StatusCode/100 != 2 {
 		if response.StatusCode == http.StatusNotFound {
 			return errors.New("not_found")
@@ -31,7 +41,7 @@ func getParsedResponse(method, path string, header http.Header, body io.Reader, 
 		} else if response.StatusCode == http.StatusForbidden {
 			return errors.New("forbidden")
 		}
-		return fmt.Errorf("other error: %v", response.StatusCode)
+		return fmt.Errorf("system_error: %v", response.StatusCode)
 	}
 	data, err := io.ReadAll(response.Body)
 	if err != nil {

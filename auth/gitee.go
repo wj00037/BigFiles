@@ -118,7 +118,7 @@ func CheckRepoOwner(userInRepo UserInRepo) error {
 		}
 	}
 	msg := "forbidden: repo has no permission to use this lfs server"
-	logrus.Error(fmt.Sprintf("CheckRepoOwner: %s", msg))
+	logrus.Error(fmt.Sprintf("CheckRepoOwner | %s", msg))
 	return errors.New(msg)
 }
 
@@ -160,7 +160,7 @@ func verifyUser(userInRepo UserInRepo) error {
 	err := getParsedResponse("GET", path, headers, nil, &giteeUser)
 	if err != nil {
 		msg := err.Error() + ": verify user permission failed"
-		logrus.Error(fmt.Sprintf("verifyUser: %s", msg))
+		logrus.Error(fmt.Sprintf("verifyUser | %s", msg))
 		return errors.New(msg)
 	}
 
@@ -170,21 +170,26 @@ func verifyUser(userInRepo UserInRepo) error {
 				return nil
 			}
 		}
-		msg := "forbidden: user has no permission to upload"
-		logrus.Error(fmt.Sprintf("verifyUser: %s", msg))
-		return errors.New(msg)
+		msg := fmt.Sprintf("forbidden: user %s has no permission to upload to %s/%s",
+			userInRepo.Username, userInRepo.Owner, userInRepo.Repo)
+		remindMsg := " \n如果您正在向fork仓库上传大文件，请确认您已使用如下命令修改了本地仓库的配置：" +
+			"\n`git config --local lfs.url https://openeuler-bigfiles.test.osinfra.cn/{owner}/{repo}`" +
+			"，\n其中{owner}/{repo}请改为您fork之后的仓库的名称。" +
+			"详阅：https://github.com/opensourceways/BigFiles/blob/master/docs/QuickStart.md"
+		logrus.Error(fmt.Sprintf("verifyUser | %s", msg))
+		return errors.New(msg + remindMsg)
 	} else if userInRepo.Operation == "download" {
 		for _, v := range downloadPermissions {
 			if giteeUser.Permission == v {
 				return nil
 			}
 		}
-		msg := "forbidden: user has no permission to download"
-		logrus.Error(fmt.Sprintf("verifyUser: %s", msg))
+		msg := fmt.Sprintf("forbidden: user %s has no permission to download", userInRepo.Username)
+		logrus.Error(fmt.Sprintf("verifyUser | %s", msg))
 		return errors.New(msg)
 	} else {
-		msg := "other error: unknow operation"
-		logrus.Error(fmt.Sprintf("verifyUser: %s", msg))
+		msg := "system_error: unknow operation"
+		logrus.Error(fmt.Sprintf("verifyUser | %s", msg))
 		return errors.New(msg)
 	}
 }
