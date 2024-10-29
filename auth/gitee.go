@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/metalogical/BigFiles/config"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -23,7 +24,6 @@ var (
 )
 
 type giteeUser struct {
-	Login      string `json:"login"`
 	Permission string `json:"permission"`
 }
 
@@ -101,7 +101,8 @@ func CheckRepoOwner(userInRepo UserInRepo) error {
 	repo := new(Repo)
 	err := getParsedResponse("GET", path, headers, nil, &repo)
 	if err != nil {
-		return err
+		msg := err.Error() + ": check repo_id failed"
+		return errors.New(msg)
 	}
 	for _, allowedRepo := range allowedRepos {
 		if strings.Split(repo.Fullname, "/")[0] == allowedRepo {
@@ -116,8 +117,9 @@ func CheckRepoOwner(userInRepo UserInRepo) error {
 			}
 		}
 	}
-
-	return errors.New("your repository does not appear to have permission to use this lfs service")
+	msg := "forbidden: repo has no permission to use this lfs server"
+	logrus.Error(fmt.Sprintf("CheckRepoOwner | %s", msg))
+	return errors.New(msg)
 }
 
 // getToken gets access_token by username and password
@@ -135,7 +137,8 @@ func getToken(username, password string) (string, error) {
 	accessToken := new(AccessToken)
 	err := getParsedResponse("POST", path, headers, strings.NewReader(form.Encode()), &accessToken)
 	if err != nil {
-		return "", err
+		msg := err.Error() + ": get token failed. Or may be it is already a token"
+		return "", errors.New(msg)
 	}
 
 	return accessToken.Token, nil
@@ -156,27 +159,37 @@ func verifyUser(userInRepo UserInRepo) error {
 	giteeUser := new(giteeUser)
 	err := getParsedResponse("GET", path, headers, nil, &giteeUser)
 	if err != nil {
-		return err
+		msg := err.Error() + ": verify user permission failed"
+		logrus.Error(fmt.Sprintf("verifyUser | %s", msg))
+		return errors.New(msg)
 	}
 
-	if giteeUser.Login != userInRepo.Username {
-		return errors.New("username does not match")
-	}
 	if userInRepo.Operation == "upload" {
 		for _, v := range uploadPermissions {
 			if giteeUser.Permission == v {
 				return nil
 			}
 		}
-		return errors.New("user has no permission uploading to the repository")
+		msg := fmt.Sprintf("forbidden: user %s has no permission to upload to %s/%s",
+			userInRepo.Username, userInRepo.Owner, userInRepo.Repo)
+		remindMsg := " \n如果您正在向fork仓库上传大文件，请确认您已使用如下命令修改了本地仓库的配置：" +
+			"\n`git config --local lfs.url https://openeuler-bigfiles.test.osinfra.cn/{owner}/{repo}`" +
+			"，\n其中{owner}/{repo}请改为您fork之后的仓库的名称。" +
+			"详阅：https://github.com/opensourceways/BigFiles/blob/master/docs/QuickStart.md"
+		logrus.Error(fmt.Sprintf("verifyUser | %s", msg))
+		return errors.New(msg + remindMsg)
 	} else if userInRepo.Operation == "download" {
 		for _, v := range downloadPermissions {
 			if giteeUser.Permission == v {
 				return nil
 			}
 		}
-		return errors.New("user has no permission downloading in the repository")
+		msg := fmt.Sprintf("forbidden: user %s has no permission to download", userInRepo.Username)
+		logrus.Error(fmt.Sprintf("verifyUser | %s", msg))
+		return errors.New(msg)
 	} else {
-		return errors.New("unknow operation")
+		msg := "system_error: unknow operation"
+		logrus.Error(fmt.Sprintf("verifyUser | %s", msg))
+		return errors.New(msg)
 	}
 }

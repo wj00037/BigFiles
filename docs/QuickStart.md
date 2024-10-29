@@ -12,7 +12,7 @@
 
 ```
 [lfs]
- 　　 url = https://openeuler-bigfiles.test.osinfra.cn/{owner}/{repo}
+    url = https://openeuler-bigfiles.test.osinfra.cn/{owner}/{repo}
 ```
 
 - 或者通过命令行设置仓库中LFS远程地址：
@@ -22,16 +22,19 @@ $ git config --local lfs.url https://openeuler-bigfiles.test.osinfra.cn/{owner}/
 ```
 
 > 当存在.lfsconfig文件时，使用命令行进行LFS远程地址设置的优先级将高于.lfsconfig文件。  
-  url中{owner}/{repo}替换为实际的仓库路径，如：openeuler/lfs。由于Gitee默认会将仓库路径中的大写转化为小写，请确认仓库路径的大小写。
+> url中{owner}/{repo}替换为实际的仓库路径，如：openeuler/lfs。由于Gitee默认会将仓库路径中的大写转化为小写，请确认仓库路径的大小写。
 
 ## 第三方LFS服务与Gitee的使用差异
 
 关于GIT LFS的基本使用请详阅[基础教程](BasicGuide.md)。我们努力使第三方LFS服务与原生LFS服务的使用差异尽可能少，以下是现存的一些差异：
 
-- 当您fork一个仓库：
-  - 在fork一个已经使用第三方LFS服务作为LFS远程服务的仓库后，需要手动修改新仓库中LFS远程地址中的{owner}以及{repo}，否则会出现权限校验问题，**错误代码401**。
-- 当您使用ssh协议进行克隆或推送：
-  - 在使用SSH对Gitee仓库进行克隆后，在使用第三方LFS服务作为LFS远程服务时，仍然需要输入账户和密码。
+- 当您fork一个仓库：将fork仓库克隆到本地后，需手动使用如下命令修改本地仓库的lfs配置：
+
+  ```
+  $ git config --local lfs.url https://openeuler-bigfiles.test.osinfra.cn/{owner}/{repo}
+  ```
+
+- 当您使用ssh协议进行克隆或推送：克隆或推送大文件时仍需输入用户名和密码进行认证。
 
 ## 迁移Gitee中使用LFS服务的仓库中的大文件
 

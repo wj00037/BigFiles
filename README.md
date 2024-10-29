@@ -15,4 +15,5 @@ v2.12.0](https://github.com/git-lfs/git-lfs/tree/v2.12.0/docs/api) server.
 5. ~~认证时校验用户在仓库内权限。~~
 6. 支持ssh。
 7. ~~仓库添加github action。~~
-8. 添加日志。
+8. ~~添加日志。~~
+9. 支持cdn。
