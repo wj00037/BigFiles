@@ -16,7 +16,6 @@ import (
 	"github.com/huaweicloud/huaweicloud-sdk-go-obs/obs"
 	"github.com/metalogical/BigFiles/auth"
 	"github.com/metalogical/BigFiles/batch"
-	"github.com/sirupsen/logrus"
 )
 
 var ObsPutLimit int = 5*int(math.Pow10(9)) - 1 // 5GB - 1
@@ -203,14 +202,14 @@ func (s *server) handleBatch(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				panic(err)
 			}
-			v, err := url.Parse(getObjectOutput.SignedUrl)
-			if err == nil {
-				v.Host = s.cdnDomain
-				v.Scheme = "https"
-			} else {
-				logrus.Infof("%s cannot be parsed", getObjectOutput.SignedUrl)
-				panic(err)
-			}
+			v, _ := url.Parse(getObjectOutput.SignedUrl)
+			// if err == nil {
+			// 	v.Host = s.cdnDomain
+			// 	v.Scheme = "https"
+			// } else {
+			// 	logrus.Infof("%s cannot be parsed", getObjectOutput.SignedUrl)
+			// 	panic(err)
+			// }
 
 			out.Actions = &batch.Actions{
 				Download: &batch.Action{
