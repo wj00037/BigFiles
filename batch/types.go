@@ -1,8 +1,6 @@
 package batch
 
-import (
-	"time"
-)
+import "time"
 
 type Request struct {
 	Operation string   `json:"operation"`
@@ -27,7 +25,6 @@ type ErrorResponse struct {
 	RequestID string `json:"request_id,omitempty"`
 }
 
-// Action.objects.actions.header
 type Action struct {
 	HRef      string            `json:"href"`
 	Header    map[string]string `json:"header,omitempty"`

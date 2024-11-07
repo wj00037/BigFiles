@@ -79,17 +79,18 @@ func New(o Options) (http.Handler, error) {
 
 	client, err := obs.New(o.AccessKeyID, o.SecretAccessKey, o.Endpoint, obs.WithSignature(obs.SignatureObs))
 	if err != nil {
-		fmt.Printf("Create obsClient error, errMsg: %s", err.Error())
+		return nil, err
 	}
 
 	s := &server{
+		ttl:          o.TTL,
 		client:       client,
 		bucket:       o.Bucket,
 		prefix:       o.Prefix,
-		ttl:          o.TTL,
 		cdnDomain:    o.CdnDomain,
 		isAuthorized: o.IsAuthorized,
 	}
+
 	r := chi.NewRouter()
 
 	r.Get("/", s.healthCheck)
@@ -249,6 +250,7 @@ func (s *server) handleBatch(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
 	must(json.NewEncoder(w).Encode(resp))
 }
 
