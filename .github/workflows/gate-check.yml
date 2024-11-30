@@ -2,7 +2,7 @@ name: Gate Check
 
 on:
   pull_request:
-    types: [opened, synchronized, reopened]  # 在PR打开、同步、重新打开时触发
+    types: [opened, synchronize, reopened]  # 在PR打开、同步、重新打开时触发
 
 jobs:
   codearts-check:
