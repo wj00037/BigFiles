@@ -148,6 +148,12 @@ func (s *server) handleBatch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	resp := s.handleRequestObject(req)
+	must(json.NewEncoder(w).Encode(resp))
+}
+
+func (s *server) handleRequestObject(req batch.Request) batch.Response {
 	var resp batch.Response
 	for i := 0; i < len(req.Objects); i++ {
 		in := req.Objects[i]
@@ -174,7 +180,7 @@ func (s *server) handleBatch(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 	}
-	must(json.NewEncoder(w).Encode(resp))
+	return resp
 }
 
 func (s *server) dealWithAuthError(userInRepo auth.UserInRepo, w http.ResponseWriter, r *http.Request) error {
@@ -216,11 +222,7 @@ func (s *server) dealWithAuthError(userInRepo auth.UserInRepo, w http.ResponseWr
 }
 
 func (s *server) downloadObject(in *batch.RequestObject, out *batch.Object) {
-	getObjectMetadataInput := &obs.GetObjectMetadataInput{
-		Bucket: s.bucket,
-		Key:    s.key(in.OID),
-	}
-	if metadata, err := s.client.GetObjectMetadata(getObjectMetadataInput); err != nil {
+	if metadata, err := s.getObjectMetadataInput(s.key(in.OID)); err != nil {
 		out.Error = &batch.ObjectError{
 			Code:    404,
 			Message: err.Error(),
@@ -261,6 +263,12 @@ func (s *server) uploadObject(in *batch.RequestObject, out *batch.Object) {
 		return
 	}
 
+	_, err := s.getObjectMetadataInput(s.key(in.OID))
+	if err == nil {
+		logrus.Infof("object already exists: %s", in.OID)
+		return
+	}
+
 	putObjectInput := &obs.CreateSignedUrlInput{}
 	putObjectInput.Method = obs.HttpMethodPut
 	putObjectInput.Bucket = s.bucket
@@ -279,6 +287,14 @@ func (s *server) uploadObject(in *batch.RequestObject, out *batch.Object) {
 			ExpiresIn: int(s.ttl / time.Second),
 		},
 	}
+}
+
+func (s *server) getObjectMetadataInput(key string) (output *obs.GetObjectMetadataOutput, err error) {
+	getObjectMetadataInput := obs.GetObjectMetadataInput{
+		Bucket: s.bucket,
+		Key:    key,
+	}
+	return s.client.GetObjectMetadata(&getObjectMetadataInput)
 }
 
 // 生成下载对象的带授权信息的URL
